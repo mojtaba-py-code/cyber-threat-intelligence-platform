@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Threat Intel Platform</title>
+  <style nonce="{{nonce}}">
+    :root {
+      --bg:#0a0d12; --panel:#12171f; --panel-2:#1a212c; --border:#232c39;
+      --text:#e6edf3; --muted:#8a97a8; --accent:#e0245e; --accent2:#3b82f6;
+      --green:#22c55e; --amber:#f59e0b; --red:#ef4444; --radius:12px;
+    }
+    :root[data-theme="light"]{--bg:#f4f6fa;--panel:#fff;--panel-2:#eef2f7;--border:#d7dee8;--text:#0a0d12;--muted:#5a6675;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:10}
+    header h1{font-size:17px;margin:0}
+    .badge{font-size:11px;padding:2px 8px;border-radius:999px;margin-left:8px;background:var(--panel-2);color:var(--muted);border:1px solid var(--border)}
+    .wrap{max-width:1150px;margin:0 auto;padding:22px}
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+    .card h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+    label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+    input,select,button,textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:14px}
+    textarea{font-family:ui-monospace,Consolas,monospace;font-size:12px;resize:vertical}
+    .badge.live{color:var(--green);border-color:var(--green)}
+    button{background:var(--accent);border:none;color:#fff;cursor:pointer;font-weight:600;margin-top:12px}
+    button:hover{opacity:.9}
+    button.ghost{background:var(--panel-2);color:var(--text);border:1px solid var(--border)}
+    .row{display:flex;gap:10px}.row>*{flex:1}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+    th{color:var(--muted)}
+    .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+    .pill.critical{background:rgba(239,68,68,.18);color:var(--red)}
+    .pill.high{background:rgba(245,158,11,.18);color:var(--amber)}
+    .pill.medium{background:rgba(59,130,246,.18);color:var(--accent2)}
+    .pill.low,.pill.clean{background:rgba(139,152,169,.15);color:var(--muted)}
+    .stat{font-size:26px;font-weight:800}
+    .muted{color:var(--muted);font-size:12px}
+    .scroll{overflow-x:auto}
+    .hidden{display:none!important}
+    .toast{position:fixed;bottom:18px;right:18px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;max-width:340px;font-size:13px;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none}
+    .toast.show{opacity:1;transform:translateY(0)}.toast.err{border-color:var(--red);color:var(--red)}
+    code{font-family:ui-monospace,Consolas,monospace}
+    a{color:var(--accent2)}
+    .mt{margin-top:16px}.mb{margin-bottom:10px}.full{grid-column:1/-1}
+    .hdr-actions{width:auto;gap:8px}.hdr-btn{width:auto;margin:0}
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>🛡️ Threat Intel Platform <span class="badge" id="modeBadge">offline</span></h1></div>
+    <div class="row hdr-actions">
+      <button class="ghost hdr-btn" data-action="toggleTheme">◐ Theme</button>
+      <button class="ghost hidden hdr-btn" id="logoutBtn" data-action="logout">Logout</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <div id="authView" class="grid">
+      <div class="card">
+        <h2>Sign in</h2>
+        <label>Email</label><input id="email" type="email" value="analyst@example.com"/>
+        <label>Password</label><input id="pass" type="password" value="analyst-strong-pw"/>
+        <button data-action="login">Login</button>
+        <button class="ghost" data-action="register">Register</button>
+        <p class="muted">Collection is offline by default — collectors serve bundled sample intelligence.</p>
+      </div>
+      <div class="card">
+        <h2>Supported collectors</h2>
+        <div class="scroll"><table id="colTable"><thead><tr><th>Source</th><th>Category</th><th>Key?</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div id="appView" class="hidden">
+      <div class="grid" id="statCards"></div>
+
+      <div class="grid mt">
+        <div class="card">
+          <h2>Submit indicator</h2>
+          <label>Value (IP / domain / URL / hash / CVE — defanged ok)</label>
+          <input id="iocValue" value="hxxp://malware-drop[.]example/x.bin"/>
+          <div class="row">
+            <div><label>Source</label><input id="iocSource" value="manual"/></div>
+            <div><label>Severity</label><select id="iocSev"><option>medium</option><option>high</option><option>critical</option><option>low</option></select></div>
+          </div>
+          <button data-action="submitIoc">Analyze &amp; store</button>
+          <p class="muted" id="iocResult"></p>
+        </div>
+        <div class="card">
+          <h2>Run collector</h2>
+          <label>Collector</label><select id="colSelect"></select>
+          <button data-action="runCollector">Collect &amp; ingest</button>
+          <p class="muted" id="colResult"></p>
+          <button class="ghost" data-action="refresh">Refresh dashboard</button>
+        </div>
+        <div class="card">
+          <h2>Search</h2>
+          <label>Query</label><input id="searchQ" placeholder="value or keyword"/>
+          <div class="row">
+            <div><label>Min score</label><input id="searchMin" type="number" value="0" min="0" max="100"/></div>
+            <div><label>Level</label><select id="searchLevel"><option value="">any</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select></div>
+          </div>
+          <button data-action="loadIocs">Search</button>
+        </div>
+        <div class="card">
+          <h2>Import a report</h2>
+          <label>Paste prose, a CSV export or a STIX bundle</label>
+          <textarea id="bulkText" rows="4" placeholder="Actor staged hxxp://c2[.]example/gate.php and beaconed to 198[.]51[.]100[.]7 (CVE-2024-21412)"></textarea>
+          <label>Source label</label><input id="bulkSource" value="import"/>
+          <div class="row">
+            <button class="ghost" data-action="bulkPreview">Preview</button>
+            <button data-action="bulkImport">Import all</button>
+          </div>
+          <p class="muted" id="bulkResult"></p>
+        </div>
+      </div>
+
+      <div class="grid mt">
+        <div class="card full">
+          <h2>Live alerts <span class="badge" id="liveBadge">connecting…</span></h2>
+          <div class="scroll"><table id="alertTable">
+            <thead><tr><th>Time</th><th>Severity</th><th>Alert</th><th>Indicator</th><th>Score</th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">Alerts appear here the moment a rule matches.</td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="grid mt">
+        <div class="card full">
+          <h2>Indicators</h2>
+          <div class="row mb">
+            <button class="ghost" data-action="export" data-format="csv">Export CSV</button>
+            <button class="ghost" data-action="export" data-format="stix">Export STIX 2.1</button>
+            <button class="ghost" data-action="export" data-format="misp">Export MISP</button>
+          </div>
+          <div class="scroll"><table id="iocTable">
+            <thead><tr><th>Type</th><th>Indicator</th><th>Score</th><th>Level</th><th>Source</th><th>Tags</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script nonce="{{nonce}}">
+    const API="/api/v1"; let token=localStorage.getItem("tip_token")||null;
+    const esc=(s)=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    function toast(m,e){const t=document.getElementById("toast");t.textContent=m;t.className="toast show"+(e?" err":"");setTimeout(()=>t.className="toast",3200);}
+    function toggleTheme(){const r=document.documentElement;r.dataset.theme=r.dataset.theme==="dark"?"light":"dark";}
+    async function api(path,opts={}){opts.headers=Object.assign({"Content-Type":"application/json"},opts.headers||{});if(token)opts.headers["Authorization"]="Bearer "+token;const r=await fetch(API+path,opts);const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b?.error?.message||r.statusText);return b;}
+
+    async function loadCollectors(){const d=await api("/collectors");const tb=document.querySelector("#colTable tbody");const sel=document.getElementById("colSelect");tb.innerHTML="";if(sel)sel.innerHTML="";d.collectors.forEach(c=>{tb.insertAdjacentHTML("beforeend",`<tr><td>${esc(c.label)}</td><td>${esc(c.category)}</td><td>${c.requires_key?"🔑":"—"}</td></tr>`);if(sel)sel.insertAdjacentHTML("beforeend",`<option value="${esc(c.name)}">${esc(c.label)}</option>`);});}
+    async function loadReady(){try{const r=await api("/ready");document.getElementById("modeBadge").textContent=r.live_collectors_enabled?"LIVE":"offline";}catch{}}
+
+    async function register(){try{await api("/auth/register",{method:"POST",body:JSON.stringify({email:email.value,password:pass.value})});toast("Registered. Log in now.");}catch(e){toast(e.message,true);}}
+    async function login(){try{const r=await api("/auth/login",{method:"POST",body:JSON.stringify({email:email.value,password:pass.value})});token=r.access_token;localStorage.setItem("tip_token",token);showApp();}catch(e){toast(e.message,true);}}
+    function logout(){token=null;localStorage.removeItem("tip_token");stopAlertStream();showAuth();}
+    function showApp(){document.getElementById("authView").classList.add("hidden");document.getElementById("appView").classList.remove("hidden");document.getElementById("logoutBtn").classList.remove("hidden");refresh();startAlertStream();}
+    function showAuth(){document.getElementById("appView").classList.add("hidden");document.getElementById("authView").classList.remove("hidden");document.getElementById("logoutBtn").classList.add("hidden");}
+
+    async function refresh(){await loadStats();await loadIocs();}
+    async function loadStats(){try{const s=await api("/dashboard/stats");const el=document.getElementById("statCards");const lv=s.by_level||{};el.innerHTML="";const cards=[["Total",s.total,"medium"],["Critical",lv.critical||0,"critical"],["High",lv.high||0,"high"],["Medium",lv.medium||0,"medium"]];cards.forEach(([k,v,cls])=>el.insertAdjacentHTML("beforeend",`<div class="card"><h2>${esc(k)}</h2><div class="stat"><span class="pill ${cls}">${esc(v)}</span></div></div>`));}catch(e){}}
+    async function submitIoc(){try{const r=await api("/iocs",{method:"POST",body:JSON.stringify({value:iocValue.value,source:iocSource.value,severity:iocSev.value})});document.getElementById("iocResult").innerHTML=`Stored <code>${esc(r.defanged_value)}</code> — score <b>${esc(r.threat_score)}</b> [${esc(r.threat_level)}]`;refresh();}catch(e){toast(e.message,true);}}
+    async function runCollector(){try{const name=document.getElementById("colSelect").value;const r=await api(`/collectors/${encodeURIComponent(name)}/run?limit=50`,{method:"POST"});document.getElementById("colResult").innerHTML=`Collected ${esc(r.collected)}, ingested <b>${esc(r.ingested)}</b> (${r.live?"live":"offline"})`;refresh();}catch(e){toast(e.message,true);}}
+    async function loadIocs(){try{const p=new URLSearchParams();if(searchQ.value)p.set("q",searchQ.value);if(searchMin.value)p.set("min_score",searchMin.value);if(searchLevel.value)p.set("threat_level",searchLevel.value);p.set("page_size","30");const r=await api("/iocs?"+p.toString());const tb=document.querySelector("#iocTable tbody");tb.innerHTML="";r.items.forEach(o=>{tb.insertAdjacentHTML("beforeend",`<tr><td>${esc(o.type)}</td><td><code>${esc(o.defanged_value)}</code></td><td>${esc(o.threat_score)}</td><td><span class="pill ${esc(o.threat_level)}">${esc(o.threat_level)}</span></td><td>${esc(o.source)}</td><td>${esc((o.tags||[]).join(", "))}</td></tr>`);});if(!r.items.length)tb.innerHTML=`<tr><td colspan="6" class="muted">No indicators yet — submit one or run a collector.</td></tr>`;}catch(e){toast(e.message,true);}}
+
+    async function bulkImport(preview){
+      const content=document.getElementById("bulkText").value.trim();const out=document.getElementById("bulkResult");
+      if(!content){toast("Paste something to import first.",true);return;}
+      try{
+        if(preview){
+          const r=await api("/iocs/extract",{method:"POST",body:JSON.stringify({content})});
+          out.innerHTML=r.count?`Found <b>${esc(r.count)}</b>: `+r.indicators.map(i=>`<code>${esc(i.defanged_value)}</code>`).join(" "):"No indicators found.";
+        }else{
+          const source=document.getElementById("bulkSource").value||"import";
+          const r=await api("/iocs/bulk",{method:"POST",body:JSON.stringify({content,source})});
+          out.innerHTML=`Extracted ${esc(r.extracted)}, imported <b>${esc(r.imported)}</b>, failed ${esc(r.failed)}.`;
+          refresh();
+        }
+      }catch(e){toast(e.message,true);}
+    }
+
+    async function exportReport(fmt){
+      try{
+        const r=await fetch(`${API}/reports/iocs.${fmt}`,{headers:{"Authorization":"Bearer "+token}});
+        if(!r.ok)throw new Error(r.statusText);
+        const url=URL.createObjectURL(await r.blob());const a=document.createElement("a");
+        a.href=url;a.download={stix:"bundle.stix.json",misp:"misp-event.json"}[fmt]||`iocs.${fmt}`;
+        a.click();URL.revokeObjectURL(url);
+      }catch(e){toast(e.message,true);}
+    }
+
+    // Server-Sent Events are read with fetch (not EventSource) so the bearer
+    // token travels in a header rather than the query string.
+    let alertStream=null;
+    function stopAlertStream(){if(alertStream){alertStream.abort();alertStream=null;}}
+    async function startAlertStream(){
+      stopAlertStream();
+      const badge=document.getElementById("liveBadge");const controller=new AbortController();alertStream=controller;
+      try{
+        const r=await fetch(API+"/stream/alerts",{headers:{"Authorization":"Bearer "+token},signal:controller.signal});
+        if(!r.ok||!r.body)throw new Error(r.statusText);
+        badge.textContent="live";badge.classList.add("live");
+        const reader=r.body.getReader(),decoder=new TextDecoder();let buffer="";
+        for(;;){
+          const {value,done}=await reader.read();if(done)break;
+          buffer+=decoder.decode(value,{stream:true});
+          const frames=buffer.split("\n\n");buffer=frames.pop();
+          for(const frame of frames){
+            if(!frame.startsWith("event: alert"))continue;           // heartbeat comment
+            const line=frame.split("\n").find(l=>l.startsWith("data: "));
+            if(line)renderAlert(JSON.parse(line.slice(6)));
+          }
+        }
+        badge.textContent="disconnected";badge.classList.remove("live");
+      }catch(e){
+        if(e.name==="AbortError")return;
+        badge.textContent="offline";badge.classList.remove("live");
+      }
+    }
+    function renderAlert(a){
+      const tb=document.querySelector("#alertTable tbody");
+      if(tb.querySelector(".muted"))tb.innerHTML="";
+      const when=new Date(a.at).toLocaleTimeString();
+      tb.insertAdjacentHTML("afterbegin",`<tr><td>${esc(when)}</td><td><span class="pill ${esc(a.severity)}">${esc(a.severity)}</span></td><td>${esc(a.title)}</td><td><code>${esc(a.ioc)}</code></td><td>${esc(a.threat_score)}</td></tr>`);
+      while(tb.rows.length>50)tb.deleteRow(50);
+      loadStats();
+    }
+
+    // A nonce authorises this block, but never inline handlers, so every button
+    // declares its intent in data-action and one delegated listener dispatches.
+    const ACTIONS={toggleTheme,logout,login,register,submitIoc,runCollector,refresh,loadIocs,
+      bulkPreview:()=>bulkImport(true),bulkImport:()=>bulkImport(false),
+      export:(el)=>exportReport(el.dataset.format)};
+    document.addEventListener("click",(e)=>{
+      const el=e.target.closest("[data-action]");
+      if(el&&ACTIONS[el.dataset.action])ACTIONS[el.dataset.action](el);
+    });
+
+    loadCollectors();loadReady();
+    if(token)showApp();else showAuth();
+  </script>
+</body>
+</html>
