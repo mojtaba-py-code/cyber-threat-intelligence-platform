@@ -1,0 +1,90 @@
+# The database and cache are reachable only over the internal compose network.
+# Publishing them would expose a database — and an unauthenticated Redis, which
+# is a full host compromise — to every interface of the Docker host. To inspect
+# them locally, run `docker compose exec db psql` or add a port mapping bound to
+# 127.0.0.1 in a compose override file you do not commit.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-threatintel}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tip} -d ${POSTGRES_DB:-threatintel}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    expose:
+      - "6379"
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tip}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-threatintel}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Nginx is the only entry point; bind to loopback so the API cannot be
+    # reached directly, bypassing the proxy's rate limiting and TLS.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    build: .
+    command: ["celery", "-A", "app.workers.celery_app.celery", "worker", "--loglevel=info"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tip}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-threatintel}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+    depends_on:
+      - db
+      - redis
+
+  beat:
+    build: .
+    command: ["celery", "-A", "app.workers.celery_app.celery", "beat", "--loglevel=info"]
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+    depends_on:
+      - redis
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
