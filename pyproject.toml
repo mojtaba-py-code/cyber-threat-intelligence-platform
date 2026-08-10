@@ -1,0 +1,95 @@
+[project]
+name = "threat-intel-platform"
+version = "1.1.0"
+description = "Cyber Security Threat Intelligence Platform — collect, enrich, score, correlate and visualise cyber threat intelligence."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Mojtaba Karimi" }]
+
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "alembic>=1.13",
+    "asyncpg>=0.29",
+    "aiosqlite>=0.20",
+    "redis>=5.0",
+    "celery>=5.4",
+    "httpx>=0.27",
+    "cryptography>=42.0",
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.8",
+    "structlog>=24.2",
+    "networkx>=3.3",
+    "feedparser>=6.0",
+    "python-multipart>=0.0.9",
+    "email-validator>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "respx>=0.21",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-redis",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# The dashboard is a data file, not a module. Without this it is dropped from a
+# built wheel and the app fails at startup when installed non-editable.
+[tool.setuptools.package-data]
+app = ["web/*.html"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C4", "SIM", "ASYNC", "S"]
+ignore = ["S101", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B011", "E501"]
+# "token_type" is the JWT type claim ("access"/"refresh"/"bearer"), not a
+# credential; S105/S106 are false positives on that identifier.
+"app/security/tokens.py" = ["S105", "S106"]
+"app/schemas/auth.py" = ["S105"]
+
+[tool.coverage.run]
+source = ["app"]
+# SQLAlchemy's asyncio layer resumes application code inside greenlets. Without
+# these concurrency backends, everything executed after an `await` on the
+# database is reported as unrun and coverage badly understates reality.
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "^\\s*\\.\\.\\.$",          # abstract-method bodies
+    "if __name__ == .__main__.:",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
