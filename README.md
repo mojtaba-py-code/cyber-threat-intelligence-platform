@@ -54,6 +54,22 @@ Redis and Celery, following clean architecture and SOLID principles.
 
 ---
 
+## The dashboard
+
+Running offline, with the bundled sample intelligence and one pasted vendor
+report. Every alert below arrived over the `/stream/alerts` SSE connection while
+the page was open — the rules are evaluated on ingest, not on a poll.
+
+![Analyst dashboard: indicator counts by level, the submit/collect/search
+panels, and alerts streaming in live](docs/images/dashboard.png)
+
+Indicators are stored defanged, scored 0–100 with an explainable breakdown, and
+exportable as CSV, STIX 2.1 or a MISP event:
+
+![Indicator table showing type, defanged value, score, level, source and tags](docs/images/indicators.png)
+
+---
+
 ## Architecture
 
 ```
