@@ -1,5 +1,14 @@
 # Cyber Security Threat Intelligence Platform
 
+[![CI](https://github.com/mojtaba-py-code/cyber-threat-intelligence-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/mojtaba-py-code/cyber-threat-intelligence-platform/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A580%25%20enforced%20in%20CI-brightgreen.svg)](.github/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async-009688.svg)](https://fastapi.tiangolo.com/)
+[![Typed](https://img.shields.io/badge/mypy-checked-2A6DB2.svg)](pyproject.toml)
+[![Ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![Security](https://img.shields.io/badge/security-bandit%20%2B%20SSRF%20guard-yellow.svg)](docs/security.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A modular, security-first platform to **collect, enrich, score, correlate and
 visualise** cyber threat intelligence — a simplified, self-hostable Threat
 Intelligence Platform (TIP) built with FastAPI, async SQLAlchemy, PostgreSQL,

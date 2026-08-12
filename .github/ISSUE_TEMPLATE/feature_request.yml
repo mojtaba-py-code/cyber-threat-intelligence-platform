@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose a capability the platform does not have yet
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What analyst workflow does the platform make hard or impossible today?
+        Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: >
+        Rough is fine. New feed collectors and enrichment providers are the
+        easiest things to add — both are plugin points, so say if that is what
+        you need rather than a core change.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New feed collector
+        - New enrichment provider
+        - Scoring rules
+        - Correlation and campaign clustering
+        - STIX / MISP interoperability
+        - REST API / SSE stream
+        - Dashboard
+        - Deployment and operations
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints this has to respect
+      description: These are non-negotiable in this project; please confirm the proposal fits.
+      options:
+        - label: It stays offline by default — no outbound call without `ENABLE_LIVE_COLLECTORS`
+        - label: Any user-supplied URL it fetches goes through the SSRF guard
