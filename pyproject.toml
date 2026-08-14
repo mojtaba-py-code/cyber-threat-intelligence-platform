@@ -8,10 +8,10 @@ license = { text = "MIT" }
 authors = [{ name = "Mojtaba Karimi" }]
 
 dependencies = [
-    "fastapi>=0.111",
+    "fastapi>=0.141.1",
     "uvicorn[standard]>=0.30",
-    "pydantic>=2.7",
-    "pydantic-settings>=2.3",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.15",
     "sqlalchemy[asyncio]>=2.0.30",
     "alembic>=1.13",
     "asyncpg>=0.29",
@@ -19,13 +19,13 @@ dependencies = [
     "redis>=5.0",
     "celery>=5.4",
     "httpx>=0.27",
-    "cryptography>=42.0",
+    "cryptography>=50.0.0",
     "argon2-cffi>=23.1",
-    "pyjwt>=2.8",
+    "pyjwt>=2.13.0",
     "structlog>=24.2",
     "networkx>=3.3",
     "feedparser>=6.0",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.31",
     "email-validator>=2.1",
 ]
 
