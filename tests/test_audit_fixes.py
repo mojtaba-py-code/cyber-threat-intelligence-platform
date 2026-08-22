@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
+from app.config.settings import Settings
 from app.ioc.indicators import defang, refang
 
 
@@ -205,3 +206,42 @@ def test_defang_refang_roundtrip_https():
     url = "https://evil.example/path"
     assert refang(defang(url)) == url
     assert "hxxpxs" not in defang(url)
+
+
+# --- Production refuses open registration into a writable role --------------
+def _production_settings(**overrides) -> Settings:
+    """A settings object that passes every other production guard."""
+    base: dict = {
+        "app_env": "production",
+        "app_debug": False,
+        "master_encryption_key": "k" * 44,
+        "jwt_secret_key": "s" * 40,
+        "cors_origins": ["https://tip.example"],
+    }
+    return Settings(**{**base, **overrides})
+
+
+def test_production_rejects_open_registration_into_a_writable_role():
+    settings = _production_settings(
+        allow_open_registration=True, registration_default_role="analyst"
+    )
+    with pytest.raises(RuntimeError, match="REGISTRATION_DEFAULT_ROLE"):
+        settings.validate_runtime()
+
+
+def test_production_allows_open_registration_only_for_viewers():
+    _production_settings(
+        allow_open_registration=True, registration_default_role="viewer"
+    ).validate_runtime()
+
+
+def test_production_allows_a_writable_default_role_when_registration_is_closed():
+    _production_settings(
+        allow_open_registration=False, registration_default_role="analyst"
+    ).validate_runtime()
+
+
+def test_non_production_keeps_the_open_analyst_demo():
+    Settings(
+        app_env="development", allow_open_registration=True, registration_default_role="analyst"
+    ).validate_runtime()

@@ -47,8 +47,9 @@ class Settings(BaseSettings):
     jwt_refresh_ttl_days: int = 14
     jwt_algorithm: str = "HS256"
     # Role granted to self-registered users. Defaults to the writable "analyst"
-    # for the offline demo; production should set this to "viewer" (or disable
-    # open registration) so anonymous users cannot write indicators.
+    # for the offline demo; production must set this to "viewer" (or disable
+    # open registration) so anonymous users cannot write indicators — see
+    # validate_runtime(), which refuses to start otherwise.
     registration_default_role: str = "analyst"
     allow_open_registration: bool = True
 
@@ -121,6 +122,14 @@ class Settings(BaseSettings):
             missing.append("APP_DEBUG must be false in production")
         if "*" in self.cors_origins:
             missing.append("CORS_ORIGINS must not be '*' in production")
+        # Open registration into a writable role would let any stranger add and
+        # edit indicators; on a public deployment self-service sign-up may only
+        # hand out the read-only role.
+        if self.allow_open_registration and self.registration_default_role != "viewer":
+            missing.append(
+                "ALLOW_OPEN_REGISTRATION must be false, or REGISTRATION_DEFAULT_ROLE "
+                "must be 'viewer', in production"
+            )
         if missing:
             raise RuntimeError(
                 "Refusing to start in production with unsafe configuration: " + ", ".join(missing)
