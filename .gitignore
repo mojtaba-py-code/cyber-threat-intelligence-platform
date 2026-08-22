@@ -16,6 +16,11 @@ env/
 !.env.example
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
+id_rsa*
+credentials.json
 secrets/
 
 # Test / tooling caches
