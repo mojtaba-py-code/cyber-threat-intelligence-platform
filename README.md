@@ -199,7 +199,7 @@ ruff check app tests && ruff format --check app tests
 mypy app
 ```
 
-Migrations (production): `alembic revision --autogenerate -m init && alembic upgrade head`
+Migrations: `alembic upgrade head` (the `api` container runs this on start)
 Background jobs: `celery -A app.workers.celery_app.celery worker` / `... beat`
 
 ---

@@ -29,10 +29,18 @@ Services: `db` (Postgres), `redis`, `api`, `worker` (Celery), `beat`
 (scheduler), `nginx` (reverse proxy on :80).
 
 ## 3. Database migrations
-The API auto-creates tables only in non-production. In production use Alembic:
+The API auto-creates tables only in non-production; in production the schema
+comes from Alembic. The `api` service runs `alembic upgrade head` before
+uvicorn starts, so a fresh stack migrates itself. To apply migrations by hand
+(or to check where a database stands):
 ```bash
-docker compose exec api alembic revision --autogenerate -m "init"
 docker compose exec api alembic upgrade head
+docker compose exec api alembic current
+```
+After changing a model, generate the next revision against a running database
+and commit it:
+```bash
+docker compose exec api alembic revision --autogenerate -m "describe the change"
 ```
 
 ## 4. TLS / HTTPS
