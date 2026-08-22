@@ -1,17 +1,21 @@
 """Shared pytest fixtures.
 
 Environment is configured before any application module is imported so cached
-settings pick up the test database and deterministic keys.
+settings pick up the test database and keys. The encryption key is minted per
+run rather than committed: a hard-coded Fernet key is indistinguishable from a
+leaked one, both to a reader and to a secret scanner.
 """
 
 from __future__ import annotations
 
 import os
 
+from cryptography.fernet import Fernet
+
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("APP_DEBUG", "false")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("MASTER_ENCRYPTION_KEY", "0FwqA3vE8m2K4rN6sT9uW1xZ3bD5gH7jK9mP1qS4uV8=")
+os.environ.setdefault("MASTER_ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-that-is-long-enough-1234567890")
 os.environ.setdefault("ENABLE_LIVE_COLLECTORS", "false")
 
