@@ -1,6 +1,6 @@
 [project]
 name = "threat-intel-platform"
-version = "1.1.0"
+version = "1.2.0"
 description = "Cyber Security Threat Intelligence Platform — collect, enrich, score, correlate and visualise cyber threat intelligence."
 readme = "README.md"
 requires-python = ">=3.11"

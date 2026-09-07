@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 
 from app.config import Settings, get_settings
+from app.core.logging import get_logger
 from app.core.ssrf import SSRFGuard
 from app.enrichment.enrichers import DNSEnricher, GeoIPEnricher, ReputationEnricher
 from app.ioc.indicators import extract_host
@@ -25,6 +26,8 @@ from app.scoring.engine import (
 _REPUTABLE_SOURCES = frozenset(
     {"abuseipdb", "urlhaus", "malwarebazaar", "otx", "cisa_kev", "virustotal"}
 )
+
+log = get_logger(__name__)
 
 
 class EnrichmentEngine:
@@ -45,7 +48,16 @@ class EnrichmentEngine:
             return result
         if host is None:
             return result
-        for enricher in (self._geoip, self._dns, self._reputation):
+        # The host comes from a submitted indicator, so an operator who has
+        # narrowed OUTBOUND_ALLOWED_HOSTS must have that honoured here too, not
+        # only on webhook delivery. Offline facets stay available either way.
+        enrichers: tuple = (self._geoip, self._reputation)
+        if self._ssrf.host_allowed(host):
+            enrichers = (self._geoip, self._dns, self._reputation)
+        else:
+            log.info("enrichment_host_not_allowed", host=host)
+            result["dns"] = {"resolved": [], "source": "live", "blocked": True}
+        for enricher in enrichers:
             result.update(await enricher.enrich(host))
         return result
 

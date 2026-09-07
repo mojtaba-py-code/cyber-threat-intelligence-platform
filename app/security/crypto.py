@@ -2,7 +2,11 @@
 
 * :class:`SecretCipher` — authenticated symmetric encryption (Fernet / AES-128-CBC
   + HMAC-SHA256) with key rotation via :class:`MultiFernet`. Used to protect
-  provider API keys before they are stored.
+  provider API keys before they are stored. Rotation is driven from
+  configuration: ``MASTER_ENCRYPTION_KEY`` takes a comma-separated list whose
+  first entry encrypts and whose remaining entries only decrypt, so retired
+  keys keep old ciphertext readable until :meth:`SecretCipher.rotate` has
+  re-encrypted it.
 * :class:`PasswordHasher` — Argon2id password hashing for user credentials.
 """
 
@@ -81,13 +85,15 @@ class PasswordHasher:
 @functools.lru_cache(maxsize=1)
 def get_secret_cipher() -> SecretCipher:
     settings = get_settings()
-    key = settings.master_encryption_key
-    if not key:
+    keys = settings.master_encryption_keys
+    if not keys:
         if settings.is_production:
             raise EncryptionError("MASTER_ENCRYPTION_KEY is required in production.")
-        key = generate_master_key()
+        keys = [generate_master_key()]
         log.warning("using_ephemeral_encryption_key", env=str(settings.app_env))
-    return SecretCipher([key])
+    if len(keys) > 1:
+        log.info("encryption_key_rotation_active", keys=len(keys))
+    return SecretCipher(keys)
 
 
 @functools.lru_cache(maxsize=1)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin,
     alerts,
     auth,
     collectors,
@@ -19,6 +20,7 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(system.router, tags=["system"])
+api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(ioc.router, prefix="/iocs", tags=["iocs"])
 api_router.include_router(collectors.router, prefix="/collectors", tags=["collectors"])

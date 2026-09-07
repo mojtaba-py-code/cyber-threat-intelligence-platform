@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.ioc.extract import MAX_CONTENT_CHARS, MAX_INDICATORS
 from app.ioc.types import Confidence, IOCType, Severity, ThreatLevel
+
+#: A tag is a short label, not free text. Constraining the character set keeps
+#: hostile input out of every downstream renderer at the point of entry: a tag
+#: beginning "=" or "@" is a live formula once the CSV export is opened in a
+#: spreadsheet, and "|" would break a Markdown report's table.
+Tag = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[\w.:\-]{1,64}$")]
+TagList = Annotated[list[Tag], Field(max_length=32)]
+#: References are URLs an analyst can follow; bounded so a single submission
+#: cannot carry an unlimited payload.
+ReferenceList = Annotated[list[Annotated[str, Field(max_length=2048)]], Field(max_length=32)]
 
 
 class IOCCreate(BaseModel):
@@ -15,8 +25,8 @@ class IOCCreate(BaseModel):
     source: str = Field(default="manual", max_length=64, pattern=r"^[\w.\-]{1,64}$")
     confidence: Confidence = Confidence.medium
     severity: Severity = Severity.medium
-    tags: list[str] = Field(default_factory=list)
-    references: list[str] = Field(default_factory=list)
+    tags: TagList = Field(default_factory=list)
+    references: ReferenceList = Field(default_factory=list)
     description: str | None = Field(default=None, max_length=2000)
     enrich: bool = True
 
@@ -70,7 +80,7 @@ class BulkImportRequest(BaseModel):
     source: str = Field(default="import", max_length=64, pattern=r"^[\w.\-]{1,64}$")
     confidence: Confidence = Confidence.low
     severity: Severity = Severity.medium
-    tags: list[str] = Field(default_factory=list)
+    tags: TagList = Field(default_factory=list)
     # Enrichment is off by default here: a report can carry hundreds of
     # indicators, and the caller can enrich the ones that matter afterwards.
     enrich: bool = False

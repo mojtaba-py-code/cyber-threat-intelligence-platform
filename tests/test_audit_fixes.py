@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
 from app.config.settings import Settings
 from app.ioc.indicators import defang, refang
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 async def _login(client, payload) -> dict:
@@ -245,3 +249,58 @@ def test_non_production_keeps_the_open_analyst_demo():
     Settings(
         app_env="development", allow_open_registration=True, registration_default_role="analyst"
     ).validate_runtime()
+
+
+# --- Comma-separated list settings load from the environment ----------------
+# `.env.example` ships `CORS_ORIGINS=a,b` and an empty `OUTBOUND_ALLOWED_HOSTS=`,
+# and the docs tell operators to write exactly that. pydantic-settings treats a
+# list field as complex and JSON-decodes it at the source, before any validator
+# runs, so those values aborted start-up with a SettingsError: the documented
+# quick start and `docker compose up` both died on a fresh checkout. The fields
+# are annotated NoDecode to hand the raw string to `_split_csv` instead.
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", []),
+        ("a.example", ["a.example"]),
+        ("a.example,b.example", ["a.example", "b.example"]),
+        ("  a.example , b.example  ", ["a.example", "b.example"]),
+        ('["a.example","b.example"]', ["a.example", "b.example"]),  # JSON still accepted
+    ],
+)
+def test_csv_list_setting_parses_env_string(monkeypatch, raw, expected):
+    monkeypatch.setenv("OUTBOUND_ALLOWED_HOSTS", raw)
+    assert Settings(_env_file=None).outbound_allowed_hosts == expected
+
+
+def test_all_three_list_settings_read_plain_env_strings(monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", "https://a.example,https://b.example")
+    monkeypatch.setenv("TRUSTED_PROXY_CIDRS", "172.16.0.0/12,10.0.0.0/8")
+    monkeypatch.setenv("OUTBOUND_ALLOWED_HOSTS", "feed.example")
+    settings = Settings(_env_file=None)
+    assert settings.cors_origins == ["https://a.example", "https://b.example"]
+    assert settings.trusted_proxy_cidrs == ["172.16.0.0/12", "10.0.0.0/8"]
+    assert settings.outbound_allowed_hosts == ["feed.example"]
+
+
+def test_list_settings_keep_their_defaults_when_unset(monkeypatch):
+    for var in ("CORS_ORIGINS", "TRUSTED_PROXY_CIDRS", "OUTBOUND_ALLOWED_HOSTS"):
+        monkeypatch.delenv(var, raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.cors_origins == ["http://localhost:3000"]
+    assert settings.trusted_proxy_cidrs == []
+    assert settings.outbound_allowed_hosts == []
+
+
+# --- The shipped .env.example is loadable as-is -----------------------------
+# The quick start is `cp .env.example .env`, so the file has to parse into a
+# Settings object. This reads the real file, not a copy of its contents.
+def test_shipped_env_example_loads(monkeypatch):
+    for var in ("CORS_ORIGINS", "TRUSTED_PROXY_CIDRS", "OUTBOUND_ALLOWED_HOSTS", "APP_ENV"):
+        monkeypatch.delenv(var, raising=False)
+    settings = Settings(_env_file=REPO_ROOT / ".env.example")
+    assert settings.cors_origins == ["http://localhost:3000", "http://localhost:8000"]
+    assert settings.outbound_allowed_hosts == []
+    assert settings.trusted_proxy_cidrs == []
+    # The quick start points readers at /docs, so the sample env must serve it.
+    assert settings.docs_enabled is True

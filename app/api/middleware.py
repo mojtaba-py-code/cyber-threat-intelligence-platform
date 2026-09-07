@@ -30,22 +30,36 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             structlog.contextvars.clear_contextvars()
         response.headers["x-request-id"] = request_id
         response.headers["x-response-time-ms"] = str(round((time.monotonic() - start) * 1000, 2))
-        _apply_security_headers(response)
+        forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+        _apply_security_headers(response, secure=(forwarded_proto or request.url.scheme) == "https")
         return response
 
 
-def _apply_security_headers(response: Response) -> None:
+def _apply_security_headers(response: Response, *, secure: bool) -> None:
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault(
         "Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'"
     )
-    response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+    # HSTS is meaningless — and ignored — on a plain-HTTP response, so it is
+    # only sent when the request actually arrived over TLS. Behind the proxy
+    # that is what X-Forwarded-Proto reports.
+    if secure:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+        )
 
 
 class InMemoryRateLimiter(BaseHTTPMiddleware):
-    """Sliding per-IP rate limiter (single-process; Redis-backed at scale)."""
+    """Sliding per-IP rate limiter, counted per process.
+
+    This is the application's own backstop, not the deployment's rate limit:
+    with several API replicas each keeps its own window, so the effective limit
+    multiplies by the replica count. The edge limit that actually bounds a
+    caller is nginx's ``limit_req`` in ``deploy/nginx.conf``, which sees every
+    request regardless of which replica serves it.
+    """
 
     def __init__(
         self, app, *, limit_per_minute: int = 120, proxy_trust: ProxyTrust | None = None
@@ -55,7 +69,11 @@ class InMemoryRateLimiter(BaseHTTPMiddleware):
         self._window = 60.0
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._last_sweep = 0.0
-        self._exempt = {"/api/v1/health", "/api/v1/ready", "/metrics"}
+        # Liveness and readiness only: an orchestrator polls them far more often
+        # than the limit allows. Nothing else is exempt — an exemption for a
+        # path that does not exist becomes an unmetered hole the day someone
+        # adds it.
+        self._exempt = {"/api/v1/health", "/api/v1/ready"}
         self._proxy_trust = proxy_trust or ProxyTrust()
 
     async def dispatch(self, request: Request, call_next):

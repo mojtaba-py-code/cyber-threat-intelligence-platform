@@ -64,6 +64,12 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
 
+    # Starlette runs the last-added middleware outermost, so the effective order
+    # is RequestContext -> CORS -> RateLimiter. CORS deliberately sits outside
+    # the limiter: a rejected request still needs its CORS headers, or a browser
+    # reports an opaque network failure instead of the 429 it was actually sent.
+    # Cheap preflights therefore skip the app limiter; nginx's limit_req covers
+    # them at the edge.
     app.add_middleware(
         InMemoryRateLimiter,
         limit_per_minute=settings.rate_limit_per_minute,
@@ -87,13 +93,18 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict:
-        return {
+        # Only advertise the interactive docs when they are actually served —
+        # in production they are not, and pointing a client at a 404 is worse
+        # than saying nothing.
+        body = {
             "name": settings.app_name,
             "version": __version__,
-            "docs": "/docs",
             "dashboard": "/dashboard",
             "health": f"{settings.api_v1_prefix}/health",
         }
+        if settings.docs_enabled:
+            body["docs"] = "/docs"
+        return body
 
     @app.get("/dashboard", include_in_schema=False)
     async def dashboard() -> HTMLResponse:

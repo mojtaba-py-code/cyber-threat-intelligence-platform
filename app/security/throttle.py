@@ -91,9 +91,13 @@ class InMemoryLoginThrottle(LoginThrottle):
 class RedisLoginThrottle(LoginThrottle):
     """Fleet-wide lockout backed by Redis counters with a TTL.
 
-    Redis being unreachable must not lock every user out, so read paths fail
-    open (and are logged); the in-memory backend remains the default outside
-    production.
+    A Redis outage must not lock every user out of the platform, so no call
+    here raises. It must not *unlock* the platform either: an earlier version
+    reported "not locked" whenever Redis was unreachable, which turned a cache
+    outage into an open door for password guessing. Every operation therefore
+    degrades onto an in-process throttle instead — protection narrows from
+    fleet-wide to per-replica, which is what the single-instance default gives
+    anyway, rather than disappearing.
     """
 
     def __init__(
@@ -104,23 +108,35 @@ class RedisLoginThrottle(LoginThrottle):
         self._redis = redis.from_url(redis_url, decode_responses=True)
         self.max_attempts = max_attempts
         self.lockout_seconds = lockout_seconds
+        self._fallback = InMemoryLoginThrottle(
+            max_attempts=max_attempts, lockout_seconds=lockout_seconds
+        )
+
+    def _degraded(self, exc: Exception) -> None:
+        log.warning("throttle_backend_unavailable", error=str(exc), fallback="in-process")
 
     async def is_locked(self, identity: str) -> bool:
         try:
-            return bool(await self._redis.exists(_LOCK_PREFIX + self.normalise(identity)))
-        except Exception as exc:  # noqa: BLE001 - never block logins on a cache outage
-            log.warning("throttle_backend_unavailable", error=str(exc))
-            return False
+            if bool(await self._redis.exists(_LOCK_PREFIX + self.normalise(identity))):
+                return True
+        except Exception as exc:  # noqa: BLE001 - fall back, never fail open
+            self._degraded(exc)
+        return await self._fallback.is_locked(identity)
 
     async def retry_after(self, identity: str) -> int:
         try:
-            ttl = await self._redis.ttl(_LOCK_PREFIX + self.normalise(identity))
+            ttl = int(await self._redis.ttl(_LOCK_PREFIX + self.normalise(identity)))
+            if ttl > 0:
+                return ttl
         except Exception as exc:  # noqa: BLE001
-            log.warning("throttle_backend_unavailable", error=str(exc))
-            return 0
-        return max(0, int(ttl))
+            self._degraded(exc)
+        return await self._fallback.retry_after(identity)
 
     async def record_failure(self, identity: str) -> None:
+        # Recorded locally as well as in Redis: if Redis drops out midway
+        # through an attack the local counter has the earlier attempts and can
+        # still trip, instead of restarting from zero.
+        await self._fallback.record_failure(identity)
         key = self.normalise(identity)
         try:
             failures = await self._redis.incr(_FAILURE_PREFIX + key)
@@ -130,14 +146,15 @@ class RedisLoginThrottle(LoginThrottle):
             if failures >= self.max_attempts:
                 await self._redis.set(_LOCK_PREFIX + key, "1", ex=self.lockout_seconds)
         except Exception as exc:  # noqa: BLE001 - a lost failure count is not fatal
-            log.warning("throttle_backend_unavailable", error=str(exc))
+            self._degraded(exc)
 
     async def record_success(self, identity: str) -> None:
+        await self._fallback.record_success(identity)
         key = self.normalise(identity)
         try:
             await self._redis.delete(_FAILURE_PREFIX + key, _LOCK_PREFIX + key)
         except Exception as exc:  # noqa: BLE001
-            log.warning("throttle_backend_unavailable", error=str(exc))
+            self._degraded(exc)
 
 
 @functools.lru_cache(maxsize=1)

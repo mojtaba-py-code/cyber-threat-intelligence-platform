@@ -13,6 +13,7 @@ import jwt
 from app.config import get_settings
 from app.core.exceptions import InvalidTokenError
 from app.core.logging import get_logger
+from app.security.rbac import Role
 
 log = get_logger(__name__)
 
@@ -84,7 +85,7 @@ class TokenService:
                 token,
                 self._secret,
                 algorithms=[self._algorithm],
-                options={"require": ["exp", "sub", "type", "jti"]},
+                options={"require": ["exp", "sub", "type", "jti", "role"]},
             )
         except jwt.ExpiredSignatureError as exc:
             raise InvalidTokenError("Token has expired.") from exc
@@ -96,7 +97,10 @@ class TokenService:
             raise InvalidTokenError(f"Expected a {expected_type} token.")
         return TokenClaims(
             subject=str(payload["sub"]),
-            role=str(payload.get("role", "analyst")),
+            # No permissive default: a token without a role claim is rejected by
+            # the `require` list above, and anything unexpected resolves to the
+            # least-privileged role rather than a writable one.
+            role=str(payload.get("role") or Role.viewer.value),
             token_type=token_type,  # type: ignore[arg-type]
             jti=str(payload["jti"]),
             expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),

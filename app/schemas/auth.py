@@ -38,6 +38,14 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class UserRoleUpdate(BaseModel):
+    role: Role
+
+
+class UserActiveUpdate(BaseModel):
+    is_active: bool
+
+
 class ApiKeyCreate(BaseModel):
     name: str = Field(default="default", max_length=64, pattern=r"^[\w .\-]{1,64}$")
 

@@ -13,6 +13,7 @@ from app.core.exceptions import (
     InvalidApiKeyError,
     NotFoundError,
     PermissionDeniedError,
+    ValidationError,
 )
 from app.core.logging import get_logger
 from app.models.api_key import ApiKey
@@ -139,6 +140,53 @@ class AuthService:
         user = await self._users.get(user_id)
         if user is None:
             raise NotFoundError("User not found.")
+        return user
+
+    # -- administration -----------------------------------------------------
+    async def list_users(self, *, limit: int = 100, offset: int = 0) -> list[User]:
+        return await self._users.list_all(limit=limit, offset=offset)
+
+    async def set_user_role(self, *, actor_id: str, user_id: str, role: Role) -> User:
+        """Change a user's role, refusing to strand the deployment.
+
+        An admin who demotes themselves — or the last remaining admin — leaves
+        an installation nobody can administer again, so both are refused rather
+        than requiring a database edit to recover.
+        """
+        user = await self.get_user(user_id)
+        if user.id == actor_id and role is not Role.admin:
+            raise ValidationError("You cannot remove your own admin role.")
+        if (
+            user.role == Role.admin.value
+            and role is not Role.admin
+            and await self._users.count_active_with_role(Role.admin.value) <= 1
+        ):
+            raise ValidationError("Refusing to demote the last active admin.")
+        user.role = role.value
+        await self._audit.record(
+            action="user.role_change",
+            user_id=actor_id,
+            detail={"target": user_id, "role": role.value},
+        )
+        return user
+
+    async def set_user_active(self, *, actor_id: str, user_id: str, is_active: bool) -> User:
+        """Enable or disable an account. Disabling ends its access at once."""
+        user = await self.get_user(user_id)
+        if user.id == actor_id and not is_active:
+            raise ValidationError("You cannot deactivate your own account.")
+        if (
+            not is_active
+            and user.role == Role.admin.value
+            and await self._users.count_active_with_role(Role.admin.value) <= 1
+        ):
+            raise ValidationError("Refusing to deactivate the last active admin.")
+        user.is_active = is_active
+        await self._audit.record(
+            action="user.activate" if is_active else "user.deactivate",
+            user_id=actor_id,
+            detail={"target": user_id},
+        )
         return user
 
     # -- API keys -----------------------------------------------------------

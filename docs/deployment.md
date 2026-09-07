@@ -26,7 +26,23 @@ docker compose ps
 docker compose logs -f api
 ```
 Services: `db` (Postgres), `redis`, `api`, `worker` (Celery), `beat`
-(scheduler), `nginx` (reverse proxy on :80).
+(scheduler), `nginx` (reverse proxy on :80). Every service restarts unless
+stopped and runs with `no-new-privileges`.
+
+> **Terminate TLS before exposing this.** nginx listens on :80 only — the
+> stack cannot ship a certificate — so tokens and API keys would travel in
+> clear text. Mount certificates and uncomment the TLS server block at the
+> bottom of `deploy/nginx.conf`, or put a TLS-terminating load balancer in
+> front and forward `X-Forwarded-Proto`.
+
+## 2b. Create the first administrator
+Admins are minted from a shell, not over HTTP:
+```bash
+docker compose exec api python -m app.scripts.create_admin --email you@example.com
+```
+Set `TIP_ADMIN_PASSWORD` to avoid the interactive prompt in automation. Running
+it again promotes and re-enables an existing account, which is also how you
+recover if the last admin is locked out.
 
 ## 3. Database migrations
 The API auto-creates tables only in non-production; in production the schema

@@ -128,11 +128,6 @@ async def test_report_export_csv_and_md(client, headers):
 
 
 @pytest.mark.asyncio
-async def test_viewer_cannot_write(client):
-    # Craft a viewer token directly.
-    from app.security.tokens import get_token_service
-
-    pair = get_token_service().issue_pair(subject="v1", role="viewer")
-    headers = {"Authorization": f"Bearer {pair.access_token}"}
-    r = await client.post("/api/v1/iocs", headers=headers, json={"value": "1.2.3.4"})
+async def test_viewer_cannot_write(client, viewer_headers):
+    r = await client.post("/api/v1/iocs", headers=viewer_headers, json={"value": "1.2.3.4"})
     assert r.status_code == 403

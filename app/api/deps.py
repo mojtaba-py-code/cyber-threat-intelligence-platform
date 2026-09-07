@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.client_ip import ProxyTrust
 from app.config import get_settings
-from app.core.exceptions import AuthenticationError, PermissionDeniedError
+from app.core.exceptions import AuthenticationError, NotFoundError, PermissionDeniedError
 from app.database.session import get_session
 from app.enrichment.engine import EnrichmentEngine, get_enrichment_engine
 from app.repositories.api_key_repository import ApiKeyRepository
@@ -129,7 +129,22 @@ async def get_current_principal(
         # Honour revocation (logout / "log out everywhere") for access tokens too.
         if await token_store.is_revoked(claims.jti):
             raise AuthenticationError("Token has been revoked.")
-        return CurrentPrincipal(id=claims.subject, role=claims.role, kind="user")
+        # The role is read from the account, not from the token: a token minted
+        # before a demotion still carries the old role, and an access token
+        # lives long enough for that to matter. Reading the row also makes
+        # deactivation take effect on the next request rather than whenever the
+        # token happens to expire — the API-key path already worked this way.
+        try:
+            user = await auth.get_user(claims.subject)
+        except NotFoundError as exc:
+            # The signature was valid but the account is gone. That is a failed
+            # authentication, not a missing resource: answering 404 would both
+            # send the caller looking for the wrong problem and confirm which
+            # subject ids exist.
+            raise AuthenticationError("This account no longer exists.") from exc
+        if not user.is_active:
+            raise AuthenticationError("This account is disabled.")
+        return CurrentPrincipal(id=user.id, role=user.role, kind="user")
     if x_api_key:
         record = await auth.resolve_api_key(x_api_key)
         return CurrentPrincipal(id=record.user_id, role=record.role, kind="api_key")

@@ -9,11 +9,13 @@ typed and testable.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ class Settings(BaseSettings):
 
     # --- Collector safety ---
     enable_live_collectors: bool = False
-    outbound_allowed_hosts: list[str] = Field(default_factory=list)
+    outbound_allowed_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # --- Provider API keys (SecretStr so they never render in logs/repr) ---
     abuseipdb_api_key: SecretStr = SecretStr("")
@@ -73,22 +75,64 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/2"
 
     # --- CORS / rate limiting ---
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
     rate_limit_per_minute: int = 120
     # Networks whose X-Forwarded-For may be believed. Empty (the default) means
     # the header is ignored entirely: trusting it from arbitrary clients would
     # let anyone forge a source IP and step around the per-IP rate limiter.
-    trusted_proxy_cidrs: list[str] = Field(default_factory=list)
+    trusted_proxy_cidrs: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # --- API documentation ---
     expose_api_docs: bool = True
 
+    @field_validator("registration_default_role")
+    @classmethod
+    def _known_role(cls, value: str) -> str:
+        """Reject an unknown role rather than silently downgrading everyone.
+
+        The value used to be read straight through, so a typo made every new
+        account fall back to the read-only role with nothing said about it.
+        """
+        from app.security.rbac import Role
+
+        try:
+            return Role(value).value
+        except ValueError as exc:
+            allowed = ", ".join(r.value for r in Role)
+            raise ValueError(f"REGISTRATION_DEFAULT_ROLE must be one of: {allowed}") from exc
+
     @field_validator("cors_origins", "outbound_allowed_hosts", "trusted_proxy_cidrs", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
-        if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
-        return value
+        """Read list settings as a comma-separated string.
+
+        These fields are annotated ``NoDecode`` so pydantic-settings hands the
+        raw environment string over instead of insisting it be JSON. Without
+        that, the documented ``CORS_ORIGINS=a,b`` — and even an empty
+        ``OUTBOUND_ALLOWED_HOSTS=`` — abort start-up with a JSON decode error.
+        A JSON array is still accepted, so either syntax works in a ``.env``.
+        """
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            return json.loads(text)
+        return [item.strip() for item in text.split(",") if item.strip()]
+
+    @property
+    def master_encryption_keys(self) -> list[str]:
+        """Encryption keys, newest first.
+
+        ``MASTER_ENCRYPTION_KEY`` accepts a comma-separated list so a key can
+        actually be rotated: the first entry encrypts new secrets, the rest only
+        decrypt, which lets old ciphertext keep working while it is re-encrypted.
+        A single key — the common case — is just a list of one.
+        """
+        return [k.strip() for k in self.master_encryption_key.split(",") if k.strip()]
 
     @property
     def is_production(self) -> bool:

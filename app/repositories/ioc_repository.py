@@ -5,6 +5,17 @@ from sqlalchemy import func, or_, select
 from app.models.ioc import IOC
 from app.repositories.base import BaseRepository
 
+#: LIKE treats % and _ as wildcards, so an analyst searching for a literal
+#: underscore in a hostname would silently match any character. Escaping the
+#: pattern keeps search results faithful to what was typed.
+ESCAPE_CHAR = "\\"
+
+
+def _escape_like(term: str) -> str:
+    for ch in (ESCAPE_CHAR, "%", "_"):
+        term = term.replace(ch, ESCAPE_CHAR + ch)
+    return term
+
 
 class IOCRepository(BaseRepository[IOC]):
     model = IOC
@@ -37,8 +48,13 @@ class IOCRepository(BaseRepository[IOC]):
         if status:
             stmt = stmt.where(IOC.status == status)
         if query:
-            like = f"%{query}%"
-            stmt = stmt.where(or_(IOC.value.ilike(like), IOC.description.ilike(like)))
+            like = f"%{_escape_like(query)}%"
+            stmt = stmt.where(
+                or_(
+                    IOC.value.ilike(like, escape=ESCAPE_CHAR),
+                    IOC.description.ilike(like, escape=ESCAPE_CHAR),
+                )
+            )
         return stmt
 
     async def search(

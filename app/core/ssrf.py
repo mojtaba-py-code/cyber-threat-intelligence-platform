@@ -33,10 +33,21 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
 def ip_is_public(ip: str) -> bool:
-    """True only for globally-routable unicast addresses."""
+    """True only for globally-routable unicast addresses.
+
+    ``is_global`` is the authoritative test and carries IANA's special-purpose
+    registry, which the individual flags below do not: 100.64.0.0/10 (RFC 6598
+    carrier-grade NAT) is neither "private" nor "loopback" to Python, yet it is
+    exactly where cloud platforms put internal services, so a guard built only
+    from those flags would happily fetch from it. The explicit flags are kept
+    alongside it because a few ranges — NAT64 and multicast among them — are
+    marked global while still being unreachable or unsafe as a destination.
+    """
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
+        return False
+    if not addr.is_global:
         return False
     return not (
         addr.is_private
@@ -61,7 +72,8 @@ class SSRFGuard:
         # Normalised allow-list; empty means "any public host".
         self._allowed = {h.lower().lstrip(".") for h in (allowed_hosts or []) if h}
 
-    def _host_allowed(self, host: str) -> bool:
+    def host_allowed(self, host: str) -> bool:
+        """True if ``host`` is inside the operator's allow-list (empty = any)."""
         if not self._allowed:
             return True
         host = host.lower()
@@ -83,7 +95,7 @@ class SSRFGuard:
         host = parts.hostname
         if not host:
             raise SSRFError("URL has no host.")
-        if not self._host_allowed(host):
+        if not self.host_allowed(host):
             raise SSRFError("Destination host is not in the allow-list.", details={"host": host})
 
         # A literal IP host must itself be public.
@@ -104,3 +116,21 @@ class SSRFGuard:
                     details={"host": host, "ip": ip},
                 )
         return SafeTarget(url=url, host=host, port=port, resolved_ips=tuple(resolved))
+
+    async def resolve_public(self, host: str) -> tuple[str, ...]:
+        """Resolve ``host``, returning only globally-routable addresses.
+
+        DNS enrichment resolves an operator- or attacker-supplied hostname
+        without ever fetching it, so :meth:`validate` (which wants a URL) does
+        not fit. The same two rules still have to hold: the host must be inside
+        the allow-list, and an answer pointing into private space must not be
+        handed back — that is how an internal address map leaks out through an
+        enrichment record.
+        """
+        if not self.host_allowed(host):
+            raise SSRFError("Host is not in the allow-list.", details={"host": host})
+        resolved = await self._resolve(host, 80)
+        public = tuple(ip for ip in resolved if ip_is_public(ip))
+        if len(public) != len(resolved):
+            log.warning("ssrf_filtered_private_answer", host=host)
+        return public

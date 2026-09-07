@@ -15,6 +15,24 @@ from collections.abc import Sequence
 from app.models.ioc import IOC
 from app.sharing import to_misp_event, to_stix_bundle
 
+#: Characters that make a spreadsheet treat a cell as a formula rather than
+#: text. A tag or indicator harvested from a hostile report can start with any
+#: of them, and the CSV export exists to be opened in Excel or LibreOffice, so
+#: the payload would run on the analyst's machine (DDE / =cmd|'/c ...'!A1).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: object) -> object:
+    """Neutralise a cell that a spreadsheet would otherwise evaluate.
+
+    Prefixing with an apostrophe is the standard mitigation: Excel and
+    LibreOffice both render the original text and refuse to evaluate it. Only
+    strings are touched, so numeric columns keep their type.
+    """
+    if not isinstance(value, str) or not value.startswith(_FORMULA_PREFIXES):
+        return value
+    return "'" + value
+
 
 def _row(ioc: IOC) -> dict:
     return {
@@ -43,7 +61,7 @@ class ReportService:
         writer.writerow(columns)
         for ioc in iocs:
             r = _row(ioc)
-            writer.writerow([r[c] for c in columns])
+            writer.writerow([_csv_safe(r[c]) for c in columns])
         return buffer.getvalue()
 
     @staticmethod
@@ -52,8 +70,9 @@ class ReportService:
         lines.append("| Type | Indicator | Score | Level | Source |")
         lines.append("| --- | --- | --- | --- | --- |")
         for ioc in iocs:
+            value = str(ioc.defanged_value).replace("|", "\\|")
             lines.append(
-                f"| {ioc.type} | `{ioc.defanged_value}` | {ioc.threat_score} "
+                f"| {ioc.type} | `{value}` | {ioc.threat_score} "
                 f"| {ioc.threat_level} | {ioc.source} |"
             )
         return "\n".join(lines) + "\n"

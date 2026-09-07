@@ -112,11 +112,8 @@ async def test_bulk_import_rejects_malformed_stix(client, headers):
 
 
 @pytest.mark.asyncio
-async def test_viewer_may_extract_but_not_bulk_import(client):
-    from app.security.tokens import get_token_service
-
-    pair = get_token_service().issue_pair(subject="v1", role="viewer")
-    headers = {"Authorization": f"Bearer {pair.access_token}"}
+async def test_viewer_may_extract_but_not_bulk_import(client, viewer_headers):
+    headers = viewer_headers
     assert (
         await client.post("/api/v1/iocs/extract", headers=headers, json={"content": REPORT})
     ).status_code == 200

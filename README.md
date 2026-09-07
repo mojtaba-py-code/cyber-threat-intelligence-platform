@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mojtaba-py-code/cyber-threat-intelligence-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/mojtaba-py-code/cyber-threat-intelligence-platform/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A580%25%20enforced%20in%20CI-brightgreen.svg)](.github/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-async-009688.svg)](https://fastapi.tiangolo.com/)
 [![Typed](https://img.shields.io/badge/mypy-checked-2A6DB2.svg)](pyproject.toml)
 [![Ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
@@ -35,7 +35,9 @@ Redis and Celery, following clean architecture and SOLID principles.
   OTX, CISA KEV and RSS advisories — offline samples out of the box, real APIs
   when keys are supplied. Adding a source is a one-line registry entry.
 - **Enrichment** — GeoIP/ASN, DNS and reputation facets (deterministic offline
-  heuristics; live resolution when enabled), all behind the SSRF guard.
+  heuristics; live resolution when enabled). Live DNS resolution runs through
+  the SSRF guard: the host must satisfy `OUTBOUND_ALLOWED_HOSTS`, and answers
+  pointing into private space are dropped rather than recorded.
 - **Transparent threat scoring** — a pure, weighted 0–100 engine (source
   corroboration, detection ratio, recency, frequency, geo/port risk,
   confidence) that returns a level **and per-signal contributions** for
@@ -56,8 +58,12 @@ Redis and Celery, following clean architecture and SOLID principles.
 - **Security** — Argon2id passwords, JWT access/refresh with **rotation +
   logout revocation** (access tokens revocable, checked per request), **API
   keys** (hashed, prefix-identified; disabled with their owner), RBAC
-  (viewer/analyst/admin), per-account **lockout**, rate limiting, security
-  headers, secret encryption at rest, structured logging with redaction.
+  (viewer/analyst/admin) with **user administration** — list accounts, change
+  a role, disable an account, all gated on `admin:manage` — per-account
+  **lockout**, rate limiting, security headers, secret encryption at rest with
+  **key rotation**, structured logging with redaction. A role change or a
+  disabled account takes effect on the next request, not whenever the token
+  happens to expire.
 - **REST API** (FastAPI + OpenAPI/Swagger/ReDoc), **dashboard** (served under a
   strict nonce-based CSP), Docker/Compose/Nginx, Celery workers + beat, Alembic, CI.
 
@@ -170,6 +176,25 @@ curl -s -X POST $BASE/auth/api-keys -H "Authorization: Bearer $TOKEN" \
 curl -s $BASE/iocs -H "X-API-Key: tip_..."
 ```
 
+## Administration
+
+The first administrator is created from a shell, never over HTTP — an endpoint
+that mints admins is an endpoint an attacker can call:
+
+```bash
+python -m app.scripts.create_admin --email you@example.com
+```
+
+After that, an admin manages accounts through the API. The service refuses to
+demote or disable the last remaining admin, so a deployment cannot lock itself
+out:
+
+```bash
+curl -s $BASE/admin/users -H "Authorization: Bearer $TOKEN"
+curl -s -X PATCH $BASE/admin/users/$ID/role   -H "Authorization: Bearer $TOKEN"   -H 'Content-Type: application/json' -d '{"role":"analyst"}'
+curl -s -X PATCH $BASE/admin/users/$ID/active -H "Authorization: Bearer $TOKEN"   -H 'Content-Type: application/json' -d '{"is_active":false}'
+```
+
 ---
 
 ## Configuration
@@ -178,7 +203,8 @@ curl -s $BASE/iocs -H "X-API-Key: tip_..."
 | --- | --- | --- |
 | `ENABLE_LIVE_COLLECTORS` | `false` | Master switch for outbound collection/enrichment. |
 | `OUTBOUND_ALLOWED_HOSTS` | *(empty)* | Extra SSRF allow-list for user-URL fetches. |
-| `MASTER_ENCRYPTION_KEY` | — | Fernet key for encrypting stored provider keys (prod-required). |
+| `MASTER_ENCRYPTION_KEY` | — | Fernet key for encrypting stored provider keys (prod-required). Comma-separated to rotate: the first key encrypts, the rest only decrypt. |
+| `REGISTRATION_DEFAULT_ROLE` | `analyst` | Role given to self-registered accounts; must be `viewer` in production when registration is open. |
 | `JWT_SECRET_KEY` | — | HS256 signing secret (prod-required, ≥ 32 chars). |
 | `ABUSEIPDB_API_KEY`, `OTX_API_KEY`, … | — | Provider keys (only used when live). |
 | `DATABASE_URL` | postgres… | Async SQLAlchemy DSN. |
@@ -224,6 +250,7 @@ app/
   repositories/ persistence (repository pattern)
   schemas/      Pydantic request/response contracts
   scoring/      threat-scoring engine (pure)
+  scripts/      out-of-band CLIs (key generation, admin bootstrap)
   security/     crypto, JWT, API keys, RBAC, throttle, token store
   services/     business logic (service layer)
   web/          single-file dashboard

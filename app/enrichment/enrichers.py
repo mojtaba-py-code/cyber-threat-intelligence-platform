@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 
 from app.config import Settings
 from app.core.logging import get_logger
+from app.core.ssrf import SSRFGuard
 
 log = get_logger(__name__)
 
@@ -61,20 +62,34 @@ class GeoIPEnricher(Enricher):
 
 
 class DNSEnricher(Enricher):
+    """Resolves a host to its A records, live, through the SSRF guard.
+
+    Resolution is the one enrichment facet that leaves the machine, so it is
+    the one that has to respect ``OUTBOUND_ALLOWED_HOSTS`` and refuse to report
+    private answers. The guard does both.
+    """
+
     name = "dns"
 
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
+        self._ssrf = SSRFGuard(settings.outbound_allowed_hosts)
+
     async def enrich(self, host: str) -> dict:
-        # Offline: no resolution. Live: resolve A/AAAA via dnspython.
+        # Offline: no resolution at all — nothing leaves the machine.
         if not self.live_enabled:
             return {"dns": {"resolved": [], "source": "offline-heuristic"}}
+        # A policy refusal and a name that simply does not resolve are different
+        # facts about the indicator, so they are reported as different fields.
+        if not self._ssrf.host_allowed(host):
+            log.info("dns_enrich_blocked", host=host)
+            return {"dns": {"resolved": [], "source": "live", "blocked": True}}
         try:
-            import dns.asyncresolver  # lazy import
-
-            answer = await dns.asyncresolver.resolve(host, "A")
-            return {"dns": {"resolved": [r.address for r in answer], "source": "live"}}
+            resolved = await self._ssrf.resolve_public(host)
         except Exception as exc:  # noqa: BLE001 - resolution failures are non-fatal
             log.info("dns_enrich_failed", host=host, error=str(exc))
             return {"dns": {"resolved": [], "source": "live", "error": True}}
+        return {"dns": {"resolved": list(resolved), "source": "live"}}
 
 
 class ReputationEnricher(Enricher):
