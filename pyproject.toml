@@ -51,6 +51,11 @@ app = ["web/*.html"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# tests/test_hardening.py imports tests.conftest. Bare ``pytest`` puts the
+# conftest directory on the path rather than the project root, so the
+# package does not exist and collection fails; ``python -m pytest`` adds the
+# working directory and hides it. CI runs the bare form.
+pythonpath = ["."]
 addopts = "-ra -q"
 filterwarnings = ["ignore::DeprecationWarning"]
 
