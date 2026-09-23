@@ -70,16 +70,21 @@ def main(argv: list[str] | None = None) -> int:
 
     password = _read_password()
     if len(password) < MIN_PASSWORD_LENGTH:
+        # CodeQL reports py/clear-text-logging-sensitive-data here and the
+        # finding is wrong: the only thing interpolated is MIN_PASSWORD_LENGTH,
+        # the integer 10. The rule keys on the *name* of the constant, not on
+        # anything it holds. The password itself is read by getpass and reaches
+        # nothing but the Argon2 hasher. Dismissed upstream as a false positive;
+        # renaming the constant to dodge the heuristic would make the code worse
+        # to read in exchange for a quieter dashboard.
         print(
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
             file=sys.stderr,
         )
         return 1
-    # Bound to its own name before printing. _create returns a status line,
-    # never the password, but passing the password straight into the print
-    # call put it one hop from a logging sink and CodeQL reported the whole
-    # expression as clear-text logging. The annotation states the type the
-    # analysis could not infer through asyncio.run.
+    # Bound to its own name because a call three levels deep inside print() is
+    # harder to read than it needs to be. This is style, not a fix: see the note
+    # on the message above.
     outcome: str = asyncio.run(_create(args.email, password))
     print(outcome)
     return 0
