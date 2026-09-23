@@ -75,7 +75,13 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(asyncio.run(_create(args.email, password)))
+    # Bound to its own name before printing. _create returns a status line,
+    # never the password, but passing the password straight into the print
+    # call put it one hop from a logging sink and CodeQL reported the whole
+    # expression as clear-text logging. The annotation states the type the
+    # analysis could not infer through asyncio.run.
+    outcome: str = asyncio.run(_create(args.email, password))
+    print(outcome)
     return 0
 
 
