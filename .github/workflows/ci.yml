@@ -1,13 +1,14 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, master]
   pull_request:
   # A CVE can be published against a pinned dependency long after the last
   # commit, so the audit runs weekly whether or not anything changed.
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "43 6 * * 1"
 
 # The pipeline only reads the checkout.  Any job needing more asks for it
 # explicitly at the job level.
